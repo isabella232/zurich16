@@ -193,8 +193,6 @@ Combine to power distributed search.
 - Integrates with, but does NOT require Couchbase
 
 * The Path to 1.0
-# commenting this out so it hosts cleaner online
-#.html html/road.html
 
 * Index Performance
 .image img/indexing.png
