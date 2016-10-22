@@ -1,0 +1,279 @@
+Bleve
+Zürich Gophers
+20 Oct 2016
+
+Marty Schoch
+marty@couchbase.com
+http://github.com/blevesearch/bleve
+@mschoch
+@blevesearch
+
+* Agenda
+- Bleve Introduction
+- How is it used?
+- The path to 1.0
+
+* Bleve Introduction
+
+* Simple
+.image img/simple-search.jpg
+
+* Advanced
+.image img/advanced-search.jpg
+
+* Search Results
+.image img/search-results.jpg
+
+* Install
+
+  go get github.com/blevesearch/bleve/...
+
+* Import
+.code -numbers code/index.go /START OMIT/,/END OMIT/ HLIMPORT
+
+* Data Model
+.code -numbers code/index.go /START OMIT/,/END OMIT/ HLMODEL
+
+* Index Mapping
+.code -numbers code/index.go /START OMIT/,/END OMIT/ HLMAPPING
+
+* Create a New Index
+.code -numbers code/index.go /START OMIT/,/END OMIT/ HLNEW
+
+* Index Data
+.play -numbers code/index.go /START OMIT/,/END OMIT/ HLINDEX
+
+* Open Index
+.code -numbers code/search.go /START OMIT/,/END OMIT/ HLOPEN
+
+* Build Query
+.code -numbers code/search.go /START OMIT/,/END OMIT/ HLQUERY
+
+* Build Request
+.code -numbers code/search.go /START OMIT/,/END OMIT/ HLREQ
+
+* Search
+.play -numbers -edit code/search.go /START OMIT/,/END OMIT/ HLSEARCH
+
+* How is it used?
+
+* How is it used?
+- Small
+Index/Search contents of a static website
+
+- Large
+Distributed Search across Cluster
+
+* Hugo
+
+.image img/hugo.png 491 434
+
+* Hugo
+
+- Build your website using Markdown.
+
+.image img/bleve-hugo-site.jpg 300 300
+
+- Run hugo
+
+    $ hugo
+
+- Publish to github/s3/etc
+
+* Hugo + Bleve
+
+Data Model
+
+.code code/hugo_data_model.go /START1 OMIT/,/END1 OMIT/
+
+Main Indexing Loop
+
+.code code/hugo_data_model.go /START2 OMIT/,/END2 OMIT/
+
+- Host these small indexes with Google App Engine
+
+* Index your site with bleve:
+
+    $ hugoidx
+    $ ls -ld search.bleve
+    drwx------  4 mschoch  staff  136 Sep 29 21:01 search.bleve
+
+Now, how to host it?
+
+* bleve-hosted
+
+Simple read-only hosting of bleve Index for searching over HTTP ([[https://github.com/blevesearch/bleve-hosted][github]])
+
+* bleve.http
+
+Optional sub-package containing HTTP Handlers for most Bleve operations.
+
+ AliasHandler
+ CreateIndexHandler
+ DebugDocumentHandler
+ DeleteIndexHandler
+ DocCountHandler
+ DocDeleteHandler
+ DocGetHandler
+ DocIndexHandler
+ GetIndexHandler
+ ListFieldsHandler
+ ListIndexesHandler
+ SearchHandler
+
+* bleve-hosted Hosting?
+
+Now
+
+- On your own server somewhere
+- Google App Engine (with some tricks/limitations)
+
+Future
+
+- Containerize
+
+* Try It - blevesearch.com
+.image img/site.png
+
+* How is it used?
+
+* Distributed Search
+.image img/couchbase.svg 400 400
+
+* Bleve, just a Library?
+.image img/library.jpg
+
+* bleve.Index, actually an interface
+
+    func New(path string, mapping mapping.IndexMapping) (Index, error)
+    func Open(path string) (Index, error)
+
+Definition
+.code code/index_interface.go /START OMIT/,/END OMIT/
+
+* Implement RemoteIndex which uses bleve.http
+
+Search()
+
+- Serializes SearchRequest to JSON
+- Search sent to remote HTTP endpoint
+- SearchResponse deserialized from JSON
+
+Other methods return ErrNotImplemented
+
+* Index Alias
+.code code/index_alias_interface.go /START OMIT/,/END OMIT/
+- IndexAlias is also an Index
+- Points to 1 or more Indexes
+
+* Scatter/Gather Across Indexes
+.code code/index_alias_shard.go /START OMIT/,/END OMIT/
+- Search executed on all index alias members
+- Results merged using appropriate sort order
+
+* ...back to Distributed Search
+
+- Remote Index (query remote node)
+- IndexAlias (combine results from multiple indexes)
+
+Combine to power distributed search.
+
+* Distributed Search
+.image img/cbft1.png 390 1100
+
+* Distributed Search
+.image img/cbft2.png 390 1100
+
+* Distributed Search
+.image img/cbft3.png 390 1100
+
+* cbft
+
+- Distributed Search using Bleve is also Open Source ([[https://github.com/couchbase/cbft][github]])
+- Integrates with, but does NOT require Couchbase
+
+* The Path to 1.0
+.html html/road.html
+
+* Index Performance
+.image img/indexing.png
+
+* Query Performance
+.image img/query.png
+
+* Using cgo for KV Storage 👎
+
+Moving away from cgo-based KV stores
+
+- Each cgo call has some overhead ([[https://www.cockroachlabs.com/blog/the-cost-and-complexity-of-cgo/][cockroachlabs]])
+- Cost may go down over time, but will never be zero
+- Batch updates amortize the cgo cost when indexing
+- Not so straightforward for querying (without complicating API)
+
+* Moss
+
+Memory-Oriented Sorted Segments ([[https://github.com/couchbase/moss][github]])
+
+Started out as just a cache, in front of existing KV store.
+
+Now also can persist segments directly (using mmap).
+
+* Moss Assumptions
+
+- Indexing Operations are frequently Batched
+
+- Data to be indexed comes from another primary source (checkpoint/resume)
+
+- Users care about how soon they can search their data, not how long it takes to persist
+
+* Moss Indexing
+
+.image img/moss3.png 320 425
+
+- Go routines independently index a batch
+
+- Incoming batches are sorted (on calling goroutine, no concurrency issues)
+
+- Once sorted we call these segments
+
+- Stack of segments is maintained
+
+* Moss Search
+
+.image img/moss3.png 320 425
+
+Data is searchable by doing binary search down the stack of segments.
+
+* Moss Background Processing
+
+.image img/moss3.png 320 425
+
+- Merge smaller segments into larger ones
+
+- Flush segments to disk
+
+* Moss Future
+
+- Continue to stabilize, gain confidence
+- Consider it as the default KV store for 1.0?
+
+* Adopted Semantic Versioning
+- currently v0.5.0
+- 'go get' works, master is usable, but...
+- API unstable temporarily
+- ...while we work to 1.0 (strongly recommend used a tagged release)
+
+* Prioritizing Issues
+.image img/onedotoh.png
+
+* Community
+.image img/community.png 46 795
+- Apache License v2.0
+- Github - Issues, PR, Code Review
+- Google Group Discussions, IRC, gitter
+
+.image img/spacer.gif 25 25
+
+I'm here today because of the community.
+
+Zürich Gopher, *Silvan*Jegen* has been using Bleve for 2 years now.
